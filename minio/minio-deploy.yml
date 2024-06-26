@@ -1,0 +1,40 @@
+- hosts: local
+  become: yes
+  tasks:
+    - name: Apply Persistent Volume and Persistent Volume Claim configuration
+      command: microk8s kubectl apply -f /path/to/minio-pvc.yaml
+      become: yes
+
+    - name: Apply MinIO Deployment and Service configuration
+      command: microk8s kubectl apply -f /path/to/minio-deployment.yaml
+      become: yes
+
+    - name: Wait for MinIO to be ready
+      shell: |
+        microk8s kubectl rollout status deployment/minio-deployment
+      register: rollout_result
+      retries: 5
+      delay: 10
+      until: rollout_result.stdout.find('successfully rolled out') != -1
+
+    - name: Create buckets using MinIO client (mc)
+      shell: |
+        mc alias set myminio http://127.0.0.1:30000 minio minio123
+        mc mb myminio/ai-build-print-data
+        mc mb myminio/ai-sync-file-uploads
+        mc mb myminio/db-backups
+      args:
+        executable: /bin/bash
+      environment:
+        PATH: "{{ ansible_env.PATH }}"
+      become: yes
+
+    - name: Create MinIO user with readwrite policy
+      shell: |
+        mc admin user add myminio aisync-app aisync-app-secret123
+        mc admin policy set myminio readwrite user=aisync-app
+      args:
+        executable: /bin/bash
+      environment:
+        PATH: "{{ ansible_env.PATH }}"
+      become: yes

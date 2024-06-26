@@ -1,0 +1,48 @@
+- hosts: local
+  become: yes
+  tasks:
+    - name: Apply PostgreSQL Secret
+      command: microk8s kubectl apply -f /path/to/postgresql-secret.yaml
+      become: yes
+
+    - name: Apply PostgreSQL Deployment
+      command: microk8s kubectl apply -f /path/to/postgresql.yaml
+      become: yes
+
+    - name: Wait for PostgreSQL to be ready
+      shell: |
+        microk8s kubectl rollout status deployment/postgresql-db
+      register: rollout_result
+      retries: 5
+      delay: 10
+      until: rollout_result.stdout.find('successfully rolled out') != -1
+
+    - name: Set MinIO alias and mirror backups
+      shell: |
+        mc alias set myminio http://localhost:9000 my-access-key my-secret-key --api S3v4
+        mc mirror --overwrite --remove /home/aibadmin/ai-sync/db-backup/ myminio/db-backups
+      args:
+        executable: /bin/bash
+      environment:
+        PATH: "{{ ansible_env.PATH }}"
+      become: yes
+
+    - name: Ensure make-backup.sh script is converted to Unix format
+      shell: dos2unix /home/aibadmin/Desktop/aisync/db-backups/make-backup.sh
+      args:
+        executable: /bin/bash
+      become: yes
+
+    - name: Ensure make-backup.sh is executable
+      file:
+        path: /home/aibadmin/Desktop/aisync/db-backups/make-backup.sh
+        mode: '0755'
+      become: yes
+
+    - name: Create cron job for database backups
+      cron:
+        name: "Database backup job"
+        minute: "0"
+        hour: "2"
+        job: "/usr/bin/sh /home/aibadmin/Desktop/aisync/db-backups/make-backup.sh > /home/aibadmin/Desktop/aisync/db-backups/job-logs.log 2>&1"
+      become: yes

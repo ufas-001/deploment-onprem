@@ -1,0 +1,26 @@
+- hosts: local
+  become: yes
+  tasks:
+    - name: Ensure /usr/local/bin directory exists
+      file:
+        path: /usr/local/bin
+        state: directory
+        mode: '0755'
+
+    - name: Apply EMQX Deployment configuration
+      command: microk8s kubectl apply -f /path/to/emqx-deployment.yaml
+      become: yes
+
+    - name: Wait for EMQX pod to be ready
+      shell: |
+        while ! kubectl get pods -l app=emqx -o jsonpath='{.items[0].status.containerStatuses[0].ready}' | grep -q true; do
+          echo "Waiting for EMQX pod to be ready..."
+          sleep 10
+        done
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/snap/bin"
+
+    - name: Check EMQX cluster status
+      command: kubectl exec -it $(kubectl get pods -l app=emqx -o jsonpath='{.items[0].metadata.name}') -- emqx_ctl cluster status
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/snap/bin"
