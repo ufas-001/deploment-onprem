@@ -7,20 +7,21 @@
         state: directory
         mode: '0755'
 
-    - name: Apply EMQX Deployment configuration
+    - name: Apply EMQX Persistent Volume and Persistent Volume Claim configuration
+      command: microk8s kubectl apply -f /path/to/emqx-pvc.yaml
+      become: yes
+
+    - name: Apply EMQX Deployment and Service configuration
       command: microk8s kubectl apply -f /path/to/emqx-deployment.yaml
       become: yes
 
-    - name: Wait for EMQX pod to be ready
+    - name: Wait for EMQX deployment to be ready
       shell: |
-        while ! kubectl get pods -l app=emqx -o jsonpath='{.items[0].status.containerStatuses[0].ready}' | grep -q true; do
-          echo "Waiting for EMQX pod to be ready..."
-          sleep 10
-        done
+        microk8s kubectl rollout status deployment/emqx-deployment
+      register: rollout_result
+      retries: 5
+      delay: 10
+      until: rollout_result.stdout.find('successfully rolled out') != -1
       environment:
         PATH: "{{ ansible_env.PATH }}:/snap/bin"
-
-    - name: Check EMQX cluster status
-      command: kubectl exec -it $(kubectl get pods -l app=emqx -o jsonpath='{.items[0].metadata.name}') -- emqx_ctl cluster status
-      environment:
-        PATH: "{{ ansible_env.PATH }}:/snap/bin"
+      become: yes
