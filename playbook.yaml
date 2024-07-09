@@ -1,0 +1,53 @@
+- name: Install snapd and microk8s in airgapped environment
+  hosts: localhost
+  become: yes
+  tasks:
+    - name: Install EPEL release
+      yum:
+        name: epel-release
+        state: present
+
+    - name: Install snapd and dependencies from local RPMs
+      yum:
+        name: "{{ item }}"
+        state: present
+        localpkg: yes
+      loop: "{{ lookup('fileglob', '/home/project/snapd-packages/*.rpm') }}"
+      notify: enable_snapd
+
+    - name: Enable and start snapd.socket
+      systemd:
+        name: snapd.socket
+        enabled: yes
+        state: started
+
+    - name: Create symlink for /snap
+      file:
+        src: /var/lib/snapd/snap
+        dest: /snap
+        state: link
+
+    - name: Acknowledge microk8s snap package
+      command: snap ack /home/project/microk8s-download/microk8s_*.assert
+
+    - name: Install microk8s snap package with classic confinement
+      command: snap install /home/user/microk8s-download/microk8s_*.snap --classic
+
+    - name: Wait for microk8s to be ready
+      command: /snap/bin/microk8s.status --wait-ready
+      register: microk8s_status
+      retries: 5
+      delay: 60
+      until: microk8s_status.rc == 0
+
+    - name: Verify microk8s installation
+      command: /snap/bin/microk8s.status
+      register: microk8s_status
+      failed_when: "'microk8s is running' not in microk8s_status.stdout"
+
+  handlers:
+    - name: enable_snapd
+      systemd:
+        name: snapd.socket
+        enabled: yes
+        state: started
