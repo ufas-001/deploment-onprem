@@ -1,0 +1,65 @@
+# Persistent Volume and Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: dynamodb-local-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/dynamodb-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dynamodb-local-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Deployment for DynamoDB Local
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dynamodb-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dynamodb-local
+  template:
+    metadata:
+      labels:
+        app: dynamodb-local
+    spec:
+      containers:
+        - name: dynamodb-local
+          image: amazon/dynamodb-local:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: dynamodb-local-storage
+              mountPath: /home/dynamodblocal/data
+      volumes:
+        - name: dynamodb-local-storage
+          persistentVolumeClaim:
+            claimName: dynamodb-local-pvc
+---
+# Service for DynamoDB Local
+apiVersion: v1
+kind: Service
+metadata:
+  name: dynamodb-local
+spec:
+  selector:
+    app: dynamodb-local
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
